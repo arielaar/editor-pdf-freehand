@@ -7,6 +7,9 @@ let drawCanvas = document.getElementById('drawCanvas');
 let ctx = canvas.getContext('2d');
 let fabricCanvas = new fabric.Canvas('drawCanvas');
 let isEditing = false;
+let isAddingText = false;
+let textToAdd = '';
+let textPositions = []; // Almacenar texto y su posición
 
 // Cargar PDF
 document.getElementById('pdfInput').addEventListener('change', function (event) {
@@ -75,7 +78,7 @@ document.getElementById('nextPage').addEventListener('click', function () {
     }
 });
 
-// Editar página
+// Editar página (dibujar)
 document.getElementById('editPage').addEventListener('click', function () {
     isEditing = !isEditing;
     if (isEditing) {
@@ -87,6 +90,37 @@ document.getElementById('editPage').addEventListener('click', function () {
     }
 });
 
+// Agregar texto
+document.getElementById('addText').addEventListener('click', function () {
+    isAddingText = true;
+    textToAdd = document.getElementById('textInput').value;
+    if (!textToAdd) {
+        alert("Por favor, escribe un texto en el cuadro de texto.");
+        return;
+    }
+    fabricCanvas.on('mouse:down', function (options) {
+        if (isAddingText) {
+            // Guardar la posición y el texto
+            textPositions.push({
+                text: textToAdd,
+                x: options.pointer.x,
+                y: options.pointer.y,
+            });
+            // Mostrar el texto en el canvas (solo visual)
+            let text = new fabric.Text(textToAdd, {
+                left: options.pointer.x,
+                top: options.pointer.y,
+                fontSize: 20,
+                fill: 'black',
+                selectable: false,
+            });
+            fabricCanvas.add(text);
+            isAddingText = false;
+            document.getElementById('textInput').value = ''; // Limpiar el cuadro de texto
+        }
+    });
+});
+
 // Guardar PDF
 document.getElementById('savePdf').addEventListener('click', async function () {
     if (!pdfDoc) return;
@@ -95,17 +129,27 @@ document.getElementById('savePdf').addEventListener('click', async function () {
     let file = document.getElementById('pdfInput').files[0];
     if (!file) return;
 
-    // Convertir el canvas de dibujo a una imagen
-    let imageBlob = await new Promise((resolve) => {
-        fabricCanvas.getElement().toBlob(resolve, 'image/png');
-    });
-
     // Cargar el PDF original usando pdf-lib
     let pdfBytes = await file.arrayBuffer();
     let pdfDocLib = await PDFLib.PDFDocument.load(pdfBytes);
 
     // Obtener la página actual
     let page = pdfDocLib.getPage(pageNum - 1);
+
+    // Agregar texto al PDF usando drawText
+    textPositions.forEach((textInfo) => {
+        page.drawText(textInfo.text, {
+            x: textInfo.x,
+            y: page.getHeight() - textInfo.y, // Ajustar la coordenada Y
+            size: 20,
+            color: PDFLib.rgb(0, 0, 0),
+        });
+    });
+
+    // Convertir el canvas de dibujo a una imagen (para los trazos)
+    let imageBlob = await new Promise((resolve) => {
+        fabricCanvas.getElement().toBlob(resolve, 'image/png');
+    });
 
     // Convertir el Blob de la imagen a un objeto Image de pdf-lib
     let image = await pdfDocLib.embedPng(await imageBlob.arrayBuffer());
